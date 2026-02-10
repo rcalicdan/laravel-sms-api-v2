@@ -1,0 +1,56 @@
+{
+    "name": "rcalicdan/laravel-sms-api",
+    "description": "Laravel package to provide SMS API integration. Any SMS vendor that provides REST API can be used. SMS-API channel for Laravel notifications also included (this is a forked version).",
+    "license": "MIT",
+    "keywords": [
+        "laravel sms",
+        "laravel notifications",
+        "laravel sms sender",
+        "laravel sms notifications",
+        "laravel sms api",
+        "laravel sms web api"
+    ],
+    "homepage": "https://github.com/gr8shivam/laravel-sms-api",
+    "authors": [
+        {
+            "name": "Shivam Agarwal",
+            "email": "gr8shivam25@gmail.com",
+            "homepage": "https://github.com/gr8shivam",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": ">=5.6.4",
+        "illuminate/support": "^5.0|^6.0|^7.0|^8.0|^9.0|^10.0|^11.0|^12.0",
+        "guzzlehttp/guzzle": "^6.0|^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^5.3|^9.5.10",
+        "orchestra/testbench": "~3.0|^8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Rcalicdan\\SmsApi\\": "src"
+        },
+        "files": [
+            "src/functions.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rcalicdan\\SmsApi\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Rcalicdan\\SmsApi\\SmsApiServiceProvider"
+            ],
+            "aliases": {
+                "SmsApi": "Rcalicdan\\SmsApi\\SmsApiFacade"
+            }
+        }
+    }
+}
