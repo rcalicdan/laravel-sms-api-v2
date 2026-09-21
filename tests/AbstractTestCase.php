@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcalicdan\SmsApi\Tests;
 
 use Orchestra\Testbench\TestCase;
@@ -10,7 +12,7 @@ abstract class AbstractTestCase extends TestCase
     /**
      * Get package providers.
      *
-     * @param  \Illuminate\Foundation\Application $app
+     * @param \Illuminate\Foundation\Application $app
      *
      * @return array
      */
@@ -24,7 +26,7 @@ abstract class AbstractTestCase extends TestCase
     /**
      * Get package aliases.
      *
-     * @param  \Illuminate\Foundation\Application $app
+     * @param \Illuminate\Foundation\Application $app
      *
      * @return array
      */

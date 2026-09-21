@@ -1,89 +1,50 @@
 <?php
+
+declare(strict_types=1);
+
 namespace Rcalicdan\SmsApi\Notifications;
 
 class SmsApiMessage
 {
-    /**
-     * The message content.
-     *
-     * @var string
-     */
-    public $content;
-
-    /**
-     * Additional Parameters.
-     *
-     * @var array
-     */
-    public $params;
-
-    /**
-     * Add Headers.
-     *
-     * @var array
-     */
-    public $headers=[];
-
-    /**
-     * The message type.
-     *
-     * @var string
-     */
-    public $type = 'text';
-
-    /**
-     * Create a new message instance.
-     *
-     * @param  string $content
-     * @param array $params
-     * @param array $headers
-     */
-    public function __construct($content = '', $params = null, $headers=[]) {
-        $this->content = $content;
-        $this->params = $params;
-        $this->headers = $headers;
+    public function __construct(
+        public string $content = '',
+        public ?array $params = null,
+        public array $headers = [],
+        public string $type = 'text'
+    ) {
     }
 
-    /**
-     * Set the message content.
-     *
-     * @param  string  $content
-     * @return $this
-     */
-    public function content($content) {
+    public function content(string $content): self
+    {
         $this->content = $content;
+
         return $this;
     }
 
     /**
-     * Set the message params.
-     *
-     * @param  array  $params
-     * @return $this
+     * @param array<string, mixed> $params
      */
-    public function params($params)
+    public function params(array $params): self
     {
         $this->params = $params;
+
         return $this;
     }
 
     /**
-     * @param $headers
-     * @return $this
+     * @param array<string, string> $headers
      */
-    public function headers($headers)
+    public function headers(array $headers): self
     {
         $this->headers = $headers;
+
         return $this;
     }
 
-    /**
-     * Set the message type.
-     *
-     * @return $this
-     */
-    public function unicode() {
+    public function unicode(): self
+    {
         $this->type = 'unicode';
+
         return $this;
     }
 }

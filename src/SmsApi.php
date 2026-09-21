@@ -1,321 +1,308 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcalicdan\SmsApi;
 
-
 use GuzzleHttp\Client;
-use GuzzleHttp\Psr7\Request;
-use GuzzleHttp\Psr7\Message;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\BadResponseException;
+use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Support\Facades\Log;
-use GuzzleHttp\Exception\RequestException;
-use Rcalicdan\SmsApi\Exception\InvalidMethodException;
-
+use InvalidArgumentException;
+use Psr\Http\Message\ResponseInterface;
+use Throwable;
 
 class SmsApi
 {
-    protected static $client = null;
-    protected $config = array();
-    protected $gateway;
-    protected $request = '';
-    protected $response = '';
-    protected $responseCode = '';
-    protected $country_code = null;
-    protected $wrapperParams = [];
+    protected static ?ClientInterface $client = null;
 
     /**
-     * SmsApi constructor.
+     * @var array<string, mixed>
      */
-    public function __construct()
-    {
-        $this->createClient();
-    }
+    protected array $config = [];
+
+    protected string $gateway = '';
+
+    protected string $response = '';
+
+    protected int|string $responseCode = 0;
+
+    protected ?string $countryCode = null;
 
     /**
-     * Create new Guzzle Client
-     *
-     * @return $this
+     * @var array<string, mixed>
      */
-    protected function createClient()
+    protected array $wrapperParams = [];
+
+    public function __construct(?ClientInterface $client = null)
     {
-        if (!self::$client) {
-            self::$client = new Client;
+        if ($client !== null) {
+            self::$client = $client;
+        } elseif (self::$client === null) {
+            self::$client = new Client([
+                'timeout' => 10.0,
+                'http_errors' => true,
+            ]);
         }
-        return $this;
     }
 
-    /**
-     * Set custom gateway
-     *
-     * @param string $gateway
-     * @return $this
-     */
-    public function gateway($gateway = '')
+    public function gateway(string $gateway = ''): self
     {
         $this->gateway = $gateway;
+
         return $this;
     }
 
-    /**
-     * Set custom country code
-     *
-     * @param string $country_code
-     * @return $this
-     */
-    public function countryCode($country_code = '')
+    public function countryCode(string $countryCode = ''): self
     {
-        $this->country_code = $country_code;
+        $this->countryCode = $countryCode;
+
         return $this;
     }
 
     /**
-     * Adds wrapper Variables
-     *
-     * @param array $wrapperVars
-     * @return $this
+     * @param array<string, mixed> $wrapperParams
      */
-    //Addition
-    public function addWrapperParams($wrapperParams)
+    public function addWrapperParams(array $wrapperParams): self
     {
         $this->wrapperParams = $wrapperParams;
-        return $this;
-    }
-
-    /**
-     * Send message
-     *
-     * @param $to
-     * @param $message
-     * @param array $extra_params
-     * @param array $extra_headers
-     * @return $this
-     * @throws InvalidMethodException
-     */
-
-
-    public function sendMessage($to, $message, $extra_params = null, $extra_headers = [])
-    {
-        // Load the default gateway if none is set
-        if ($this->gateway == '') {
-            $this->loadDefaultGateway();
-        }
-
-        // Load credentials from the configuration
-        $this->loadCredentialsFromConfig();
-
-        // Extract configuration values
-        $request_method = isset($this->config['method']) ? $this->config['method'] : 'GET';
-        $url = $this->config['url'];
-        $mobile = $this->config['add_code'] ? $this->addCountryCode($to) : $to;
-
-        // Handle mobile number formatting based on JSON setting
-        if (!(isset($this->config['json']) && $this->config['json'])) {
-            // Flatten array if JSON is false
-            if (is_array($mobile)) {
-                $mobile = $this->composeBulkMobile($mobile);
-            }
-        } else {
-            // Transform to array if JSON is true
-            if (!is_array($mobile)) {
-                $mobile = (isset($this->config['jsonToArray']) ? $this->config['jsonToArray'] : true) ? [$mobile] : $mobile;
-            }
-        }
-
-        // Prepare parameters and headers
-        $params = $this->config['params']['others'];
-        $headers = isset($this->config['headers']) ? $this->config['headers'] : [];
-
-        // Check for a wrapper in the configuration
-        $wrapper = isset($this->config['wrapper']) ? $this->config['wrapper'] : null;
-        $wrapperParams = array_merge($this->wrapperParams, (isset($this->config['wrapperParams']) ? $this->config['wrapperParams'] : []));
-        $send_to_param_name = $this->config['params']['send_to_param_name'];
-        $msg_param_name = $this->config['params']['msg_param_name'];
-
-        // Build the payload
-        if ($wrapper) {
-            $send_vars[$send_to_param_name] = $mobile;
-            $send_vars[$msg_param_name] = $message;
-        } else {
-            $params[$send_to_param_name] = $mobile;
-            $params[$msg_param_name] = $message;
-        }
-
-        // Merge wrapper parameters if applicable
-        if ($wrapper && $wrapperParams) {
-            $send_vars = array_merge($send_vars, $wrapperParams);
-        }
-
-        // Merge extra parameters and headers if provided
-        if ($extra_params) {
-            $params = array_merge($params, $extra_params);
-        }
-        if ($extra_headers) {
-            $headers = array_merge($headers, $extra_headers);
-        }
-
-        // Ensure the Authorization header is properly Base64-encoded for Twilio
-        if (isset($headers['Authorization'])) {
-            $headers['Authorization'] = 'Basic ' . base64_encode(env('TWILIO_ACCOUNT_SID') . ':' . env('TWILIO_AUTH_TOKEN'));
-        }
-
-        try {
-            // Build the HTTP request
-            $request = new Request($request_method, $url);
-
-            if ($request_method == "GET") {
-                $promise = $this->getClient()->sendAsync(
-                    $request,
-                    [
-                        'query' => $params,
-                        'headers' => $headers
-                    ]
-                );
-            } elseif ($request_method == "POST") {
-                $payload = $wrapper ? array_merge([$wrapper => [$send_vars]], $params) : $params;
-
-                if ((isset($this->config['json']) && $this->config['json'])) {
-                    $promise = $this->getClient()->sendAsync(
-                        $request,
-                        [
-                            'json' => $payload,
-                            'headers' => $headers
-                        ]
-                    );
-                } else {
-                    $promise = $this->getClient()->sendAsync(
-                        $request,
-                        [
-                            'form_params' => $payload, // Use form_params for non-JSON POST requests
-                            'headers' => $headers
-                        ]
-                    );
-                }
-            } else {
-                throw new \InvalidArgumentException("Only GET and POST methods are allowed.");
-            }
-
-            // Wait for the response
-            $response = $promise->wait();
-            $this->response = $response->getBody()->getContents();
-            $this->responseCode = $response->getStatusCode();
-
-            // Log the full request and response details
-            Log::debug('SMS Gateway Request:', [
-                'method' => $request_method,
-                'url' => $url,
-                'headers' => $headers,
-                'payload' => $payload,
-            ]);
-            Log::debug('SMS Gateway Response:', [
-                'status_code' => $this->responseCode,
-                'body' => $this->response,
-            ]);
-        } catch (RequestException $e) {
-            if ($e->hasResponse()) {
-                $response = $e->getResponse();
-                $this->response = $response->getBody()->getContents();
-                $this->responseCode = $response->getStatusCode();
-
-                // Log the error details
-                Log::error('SMS Gateway Error:', [
-                    'status_code' => $this->responseCode,
-                    'body' => $this->response,
-                ]);
-            } else {
-                // Log the exception message if there's no response
-                Log::error('SMS Gateway Exception:', [
-                    'message' => $e->getMessage(),
-                ]);
-            }
-        }
 
         return $this;
     }
 
     /**
-     * Load Default Gateway
+     * Send SMS Message.
      *
-     * @return $this
+     * @param string|list<string> $to
+     * @param array<string, mixed>|null $extraParams
+     * @param array<string, string> $extraHeaders
      */
-    protected function loadDefaultGateway()
-    {
-        $default_acc = config('sms-api.default', null);
-        if ($default_acc) {
-            $this->gateway = $default_acc;
-        }
-        return $this;
+    public function sendMessage(
+        string|array $to,
+        string $message,
+        ?array $extraParams = null,
+        array $extraHeaders = []
+    ): self {
+        $this->ensureGatewayConfigured();
+
+        $recipients = $this->prepareRecipients($to);
+        $headers = $this->prepareHeaders($extraHeaders);
+        $payload = $this->preparePayload($recipients, $message, $extraParams);
+        $method = $this->resolveHttpMethod();
+        $url = (string) ($this->config['url'] ?? '');
+
+        return $this->executeRequest($method, $url, $payload, $headers);
     }
 
-    /**
-     * Load Credentials from the selected Gateway
-     *
-     * @return $this
-     */
-    protected function loadCredentialsFromConfig()
+    public function getClient(): ClientInterface
     {
-        $gateway = $this->gateway;
-        $config_name = 'sms-api.' . $gateway;
-        $this->config = config($config_name);
-        return $this;
+        return self::$client ?? new Client();
     }
 
-    /**
-     * Add country code to mobile
-     *
-     * @param $mobile
-     * @return array|string
-     */
-    protected function addCountryCode($mobile)
-    {
-        if (!$this->country_code) {
-            $this->country_code = config('sms-api.country_code', '91');
-        }
-        if (is_array($mobile)) {
-            array_walk($mobile, function (&$value, $key) {
-                $value = $this->country_code . $value;
-            });
-            return $mobile;
-        }
-        return $this->country_code . $mobile;
-    }
-
-    /**
-     * For multiple mobiles
-     *
-     * @param $mobile
-     * @return string
-     */
-    protected function composeBulkMobile($mobile)
-    {
-        return implode(',', $mobile);
-    }
-
-    /**
-     * Get Client
-     *
-     * @return GuzzleHttp\Client
-     */
-    public function getClient()
-    {
-        return self::$client;
-    }
-
-    /**
-     * Return Response
-     *
-     * @return string
-     */
-    public function response()
+    public function response(): string
     {
         return $this->response;
     }
 
-    /**
-     * Return Response Code
-     *
-     * @return string
-     */
-    public function getResponseCode()
+    public function getResponseCode(): int|string
     {
         return $this->responseCode;
+    }
+
+    private function ensureGatewayConfigured(): void
+    {
+        if ($this->gateway === '') {
+            $default = config('sms-api.default');
+            if (\is_string($default) && $default !== '') {
+                $this->gateway = $default;
+            }
+        }
+
+        $this->config = config("sms-api.{$this->gateway}", []);
+    }
+
+    /**
+     * @param string|list<string> $to
+     *
+     * @return string|list<string>
+     */
+    private function prepareRecipients(string|array $to): string|array
+    {
+        $addCode = (bool) ($this->config['add_code'] ?? false);
+        $mobile = $addCode ? $this->addCountryCodeTo($to) : $to;
+
+        $isJson = (bool) ($this->config['json'] ?? false);
+        $jsonToArray = (bool) ($this->config['jsonToArray'] ?? true);
+
+        if (! $isJson) {
+            return \is_array($mobile) ? implode(',', $mobile) : $mobile;
+        }
+
+        if (! \is_array($mobile) && $jsonToArray) {
+            return [$mobile];
+        }
+
+        return $mobile;
+    }
+
+    /**
+     * @param string|list<string> $mobile
+     *
+     * @return string|list<string>
+     */
+    private function addCountryCodeTo(string|array $mobile): string|array
+    {
+        $code = $this->countryCode ?? (string) config('sms-api.country_code', '48');
+
+        if (\is_array($mobile)) {
+            return array_map(
+                fn (string $num): string => str_starts_with($num, '+') ? $num : $code . $num,
+                $mobile
+            );
+        }
+
+        return str_starts_with($mobile, '+') ? $mobile : $code . $mobile;
+    }
+
+    /**
+     * @param array<string, string> $extraHeaders
+     *
+     * @return array<string, string>
+     */
+    private function prepareHeaders(array $extraHeaders): array
+    {
+        $headers = $this->config['headers'] ?? [];
+
+        if (! empty($extraHeaders)) {
+            $headers = array_merge($headers, $extraHeaders);
+        }
+
+        return $headers;
+    }
+
+    /**
+     * @param string|list<string> $recipients
+     * @param array<string, mixed>|null $extraParams
+     *
+     * @return array<string, mixed>
+     */
+    private function preparePayload(string|array $recipients, string $message, ?array $extraParams): array
+    {
+        $sendToParamName = (string) ($this->config['params']['send_to_param_name'] ?? 'to');
+        $msgParamName = (string) ($this->config['params']['msg_param_name'] ?? 'message');
+        $params = $this->config['params']['others'] ?? [];
+        $wrapper = $this->config['wrapper'] ?? null;
+
+        if ($extraParams !== null) {
+            $params = array_merge($params, $extraParams);
+        }
+
+        if ($wrapper) {
+            $sendVars = [
+                $sendToParamName => $recipients,
+                $msgParamName => $message,
+            ];
+
+            $wrapperParams = array_merge($this->wrapperParams, $this->config['wrapperParams'] ?? []);
+            if (! empty($wrapperParams)) {
+                $sendVars = array_merge($sendVars, $wrapperParams);
+            }
+
+            return array_merge([$wrapper => [$sendVars]], $params);
+        }
+
+        $params[$sendToParamName] = $recipients;
+        $params[$msgParamName] = $message;
+
+        return $params;
+    }
+
+    private function resolveHttpMethod(): string
+    {
+        $method = strtoupper((string) ($this->config['method'] ?? 'GET'));
+
+        if (! \in_array($method, ['GET', 'POST', 'PUT', 'DELETE'], true)) {
+            throw new InvalidArgumentException("HTTP method [{$method}] is not supported by SmsApi.");
+        }
+
+        return $method;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string, string> $headers
+     */
+    private function executeRequest(string $method, string $url, array $payload, array $headers): self
+    {
+        $isJson = (bool) ($this->config['json'] ?? false);
+        $options = ['headers' => $headers];
+
+        if ($method === 'GET') {
+            $options['query'] = $payload;
+        } else {
+            $options[$isJson ? 'json' : 'form_params'] = $payload;
+        }
+
+        try {
+            $response = $this->getClient()->request($method, $url, $options);
+            $this->handleSuccessResponse($response, $method, $url);
+        } catch (BadResponseException $e) {
+            $this->handleBadResponse($e);
+        } catch (GuzzleException $e) {
+            $this->handleConnectionError($e);
+        } catch (Throwable $e) {
+            $this->handleUnexpectedError($e);
+        }
+
+        return $this;
+    }
+
+    private function handleSuccessResponse(ResponseInterface $response, string $method, string $url): void
+    {
+        $this->response = $response->getBody()->getContents();
+        $this->responseCode = $response->getStatusCode();
+
+        Log::debug('SMS Gateway Request Successful:', [
+            'gateway' => $this->gateway,
+            'method' => $method,
+            'url' => $url,
+            'status_code' => $this->responseCode,
+        ]);
+    }
+
+    private function handleBadResponse(BadResponseException $e): void
+    {
+        $response = $e->getResponse();
+        $this->response = $response->getBody()->getContents();
+        $this->responseCode = $response->getStatusCode();
+
+        Log::error('SMS Gateway HTTP Error Response:', [
+            'gateway' => $this->gateway,
+            'status_code' => $this->responseCode,
+            'response' => $this->response,
+        ]);
+    }
+
+    private function handleConnectionError(GuzzleException $e): void
+    {
+        $this->responseCode = (int) $e->getCode();
+        $this->response = $e->getMessage();
+
+        Log::error('SMS Gateway Network / Connection Error:', [
+            'gateway' => $this->gateway,
+            'message' => $e->getMessage(),
+        ]);
+    }
+
+    private function handleUnexpectedError(Throwable $e): void
+    {
+        $this->responseCode = 500;
+        $this->response = $e->getMessage();
+
+        Log::error('SMS Gateway Unexpected Exception:', [
+            'gateway' => $this->gateway,
+            'message' => $e->getMessage(),
+        ]);
     }
 }

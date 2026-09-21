@@ -1,13 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcalicdan\SmsApi;
 
 use Illuminate\Support\ServiceProvider;
-use Rcalicdan\SmsApi\SmsApi;
 
 class SmsApiServiceProvider extends ServiceProvider
 {
     protected $defer = false;
+
     protected $configName = 'sms-api';
 
     /**
@@ -19,7 +21,7 @@ class SmsApiServiceProvider extends ServiceProvider
     {
         $configPath = __DIR__ . '/config/' . $this->configName . '.php';
         $this->publishes([
-            $configPath => config_path($this->configName . '.php')
+            $configPath => config_path($this->configName . '.php'),
         ], 'config');
     }
 
