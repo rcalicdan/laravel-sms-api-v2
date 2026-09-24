@@ -1,43 +1,54 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Rcalicdan\SmsApi\Notifications;
 
-use Rcalicdan\SmsApi\Notifications\SmsApiMessage;
-use Rcalicdan\SmsApi\SmsApi;
+use BadMethodCallException;
 use Illuminate\Notifications\Notification;
+use Rcalicdan\SmsApi\SmsApi;
 
 class SmsApiChannel
 {
-    /** @var Client */
-    protected $client;
-
-    /**
-     * @param SmsApi $client
-     */
-    public function __construct(SmsApi $client) {
-        $this->client = $client;
+    public function __construct(
+        protected SmsApi $client
+    ) {
     }
 
     /**
      * Send the given notification.
-     *
-     * @param  mixed $notifiable
-     * @param  \Illuminate\Notifications\Notification $notification
-     * @return void
-     * @throws \Rcalicdan\SmsApi\Exception\InvalidMethodException
      */
-    public function send($notifiable, Notification $notification)
+    public function send(mixed $notifiable, Notification $notification): mixed
     {
-        if (! $mobile = $notifiable->routeNotificationFor('sms_api')) {
-            return;
+        $to = $notifiable->routeNotificationFor('sms_api', $notification)
+            ?? $notifiable->routeNotificationFor('sms', $notification);
+
+        if (empty($to)) {
+            return null;
         }
 
+        if (! method_exists($notification, 'toSmsApi')) {
+            throw new BadMethodCallException(
+                \sprintf('Notification [%s] must define a [toSmsApi] method for [%s].', $notification::class, self::class)
+            );
+        }
+
+        /** @var object{toSmsApi: callable(mixed): (SmsApiMessage|string)} $notification */
         $message = $notification->toSmsApi($notifiable);
 
-        if (is_string($message)) {
+        if (\is_string($message)) {
             $message = new SmsApiMessage($message);
         }
 
-        $this->client->sendMessage($mobile,$message->content,$message->params,$message->headers);
+        if (! $message instanceof SmsApiMessage) {
+            return null;
+        }
+
+        return $this->client->sendMessage(
+            to: $to,
+            message: $message->content,
+            extraParams: $message->params,
+            extraHeaders: $message->headers
+        );
     }
 }

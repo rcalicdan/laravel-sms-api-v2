@@ -1,24 +1,28 @@
 <?php
 
-/*
- * Add helper function
- */
+declare(strict_types=1);
 
-if (!function_exists('smsapi')) {
+use Rcalicdan\SmsApi\SmsApi;
 
+if (! function_exists('smsapi')) {
     /**
-     * @param string $to
-     * @param string $message
-     * @param array $extra_params
-     * @param array $headers
-     * @return mixed
+     * @param string|list<string>|null $to
+     * @param array<string, mixed>|null $extraParams
+     * @param array<string, string> $headers
      */
-    function smsapi($to = null, $message = null, $extra_params = null, $headers = [])
-    {
-        $smsapi = app('smsapi');
-        if (!(is_null($to) || is_null($message))) {
-            return $smsapi->sendMessage($to, $message, $extra_params, $headers);
+    function smsapi(
+        string|array|null $to = null,
+        ?string $message = null,
+        ?array $extraParams = null,
+        array $headers = []
+    ): SmsApi|string {
+        /** @var SmsApi */
+        $smsApi = app('smsapi');
+
+        if ($to !== null && $message !== null) {
+            return $smsApi->sendMessage($to, $message, $extraParams, $headers)->response();
         }
-        return $smsapi;
+
+        return $smsApi;
     }
 }
